@@ -1,0 +1,450 @@
+ package="com.example.women_safety_app">
+         <uses-permission android:name="android.permission.READ_CONTACTS" />  
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+   <uses-permission android:name="android.permission.SEND_SMS"/>
+
+
+
+   <application
+        android:label="women_safety_app"
+        android:name="${applicationName}"
+        import 'package:flutter/material.dart';
+import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:women_safety_app/child/bottom_screens/contacts_page.dart';
+import 'package:women_safety_app/components/PrimaryButton.dart';
+import 'package:women_safety_app/db/db_services.dart';
+import 'package:women_safety_app/model/contactsm.dart';
+
+class AddContactsPage extends StatelessWidget {
+class AddContactsPage extends StatefulWidget {
+  const AddContactsPage({super.key});
+@override
+  State<AddContactsPage> createState() => _AddContactsPageState();
+}
+
+class _AddContactsPageState extends State<AddContactsPage> {
+  DatabaseHelper databasehelper = DatabaseHelper();
+  List<TContact>? contactList;
+  int count = 0;
+
+  void showList() {
+    Future<Database> dbFuture = databasehelper.initializeDatabase();
+    dbFuture.then((database) {
+      Future<List<TContact>> contactListFuture =
+          databasehelper.getContactList();
+      contactListFuture.then((value) {
+        setState(() {
+          this.contactList = value;
+          this.count = value.length;
+        });
+      });
+    });
+  }
+
+  void deleteContact(TContact contact) async {
+    int result = await databasehelper.deleteContact(contact.id);
+    if (result != 0) {
+      Fluttertoast.showToast(msg: "contact removed succesfully");
+      showList();
+    }
+  }
+
+  @override
+  void initState() {
+    WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+      showList();
+    });
+
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (contactList == null) {
+      contactList = [];
+    }
+    return SafeArea(
+      child: Container(
+          padding: EdgeInsets.all(12),
+          child: Column(
+            children: [
+              PrimaryButton(
+                  title: "Add Trusted Contacts",
+                  onPressed: () {
+                    Navigator.push(
+                  onPressed: () async {
+                    bool result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ContactsPage(),
+                        ));
+                    if (result == true) {
+                      showList();
+                    }
+                  }),
+              Expanded(
+                child: ListView.builder(
+                  // shrinkWrap: true,
+                  itemCount: count,
+                  itemBuilder: (BuildContext context, int index) {
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: ListTile(
+                          title: Text(contactList![index].name),
+                          trailing: Container(
+                            width: 100,
+                            child: Row(
+                              children: [
+                                IconButton(
+                                    onPressed: () async {
+                                      await FlutterPhoneDirectCaller.callNumber(
+                                          contactList![index].number);
+                                    },
+                                    icon: Icon(
+                                      Icons.call,
+                                      color: Colors.red,
+                                    )),
+                                IconButton(
+                                    onPressed: () {
+                                      deleteContact(contactList![index]);
+                                    },
+                                    icon: Icon(
+                                      Icons.delete,
+                                      color: Colors.red,
+                                    )),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          )),
+    );
+  26  
+lib/child/bottom_screens/contacts_page.dart
+@@ -1,6 +1,9 @@
+import 'package:contacts_service/contacts_service.dart';
+import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:women_safety_app/db/db_services.dart';
+import 'package:women_safety_app/model/contactsm.dart';
+import 'package:women_safety_app/utils/constants.dart';
+
+class ContactsPage extends StatefulWidget {
+@@ -13,6 +16,7 @@ class ContactsPage extends StatefulWidget {
+class _ContactsPageState extends State<ContactsPage> {
+  List<Contact> contacts = [];
+  List<Contact> contactsFiltered = [];
+  DatabaseHelper _databaseHelper = DatabaseHelper();
+
+  TextEditingController searchController = TextEditingController();
+  @override
+@@ -138,6 +142,18 @@ class _ContactsPageState extends State<ContactsPage> {
+                                        backgroundColor: primaryColor,
+                                        child: Text(contact.initials()),
+                                      ),
+                                onTap: () {
+                                  if (contact.phones!.length > 0) {
+                                    final String phoneNum =
+                                        contact.phones!.elementAt(0).value!;
+                                    final String name = contact.displayName!;
+                                    _addContact(TContact(phoneNum, name));
+                                  } else {
+                                    Fluttertoast.showToast(
+                                        msg:
+                                            "Oops! phone number of this contact does exist");
+                                  }
+                                },
+                              );
+                            },
+                          ),
+@@ -150,4 +166,14 @@ class _ContactsPageState extends State<ContactsPage> {
+            ),
+    );
+  }
+
+  void _addContact(TContact newContact) async {
+    int result = await _databaseHelper.insertContact(newContact);
+    if (result != 0) {
+      Fluttertoast.showToast(msg: "contact added successfully");
+    } else {
+      Fluttertoast.showToast(msg: "Failed to add contacts");
+    }
+    Navigator.of(context).pop(true);
+  }
+}
+ 116  
+lib/widgets/home_widgets/safehome/SafeHome.dart
+@@ -1,12 +1,126 @@
+import 'package:background_sms/background_sms.dart';
+import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:women_safety_app/components/PrimaryButton.dart';
+import 'package:women_safety_app/db/db_services.dart';
+import 'package:women_safety_app/model/contactsm.dart';
+
+class SafeHome extends StatefulWidget {
+  @override
+  State<SafeHome> createState() => _SafeHomeState();
+}
+
+class _SafeHomeState extends State<SafeHome> {
+  Position? _curentPosition;
+  String? _curentAddress;
+  LocationPermission? permission;
+  _getPermission() async => await [Permission.sms].request();
+  _isPermissionGranted() async => await Permission.sms.status.isGranted;
+  _sendSms(String phoneNumber, String message, {int? simSlot}) async {
+    SmsStatus result = await BackgroundSms.sendMessage(
+        phoneNumber: phoneNumber, message: message, simSlot: 1);
+    if (result == SmsStatus.sent) {
+      print("Sent");
+      Fluttertoast.showToast(msg: "send");
+    } else {
+      Fluttertoast.showToast(msg: "failed");
+    }
+  }
+
+  _getCurrentLocation() async {
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      Fluttertoast.showToast(msg: "Location permissions are  denind");
+      if (permission == LocationPermission.deniedForever) {
+        Fluttertoast.showToast(
+            msg: "Location permissions are permanently denind");
+      }
+    }
+    Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            forceAndroidLocationManager: true)
+        .then((Position position) {
+      setState(() {
+        _curentPosition = position;
+        print(_curentPosition!.latitude);
+        _getAddressFromLatLon();
+      });
+    }).catchError((e) {
+      Fluttertoast.showToast(msg: e.toString());
+    });
+  }
+
+  _getAddressFromLatLon() async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+          _curentPosition!.latitude, _curentPosition!.longitude);
+
+      Placemark place = placemarks[0];
+      setState(() {
+        _curentAddress =
+            "${place.locality},${place.postalCode},${place.street},";
+      });
+    } catch (e) {
+      Fluttertoast.showToast(msg: e.toString());
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _getPermission();
+    _getCurrentLocation();
+  }
+
+class SafeHome extends StatelessWidget {
+  showModelSafeHome(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height / 1.4,
+          child: Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "SEND YOUR CUURENT LOCATION IMMEDIATELY TO YOU EMERGENCY CONTACTS",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20),
+                ),
+                SizedBox(height: 10),
+                if (_curentPosition != null) Text(_curentAddress!),
+                PrimaryButton(
+                    title: "GET LOCATION",
+                    onPressed: () {
+                      _getCurrentLocation();
+                    }),
+                SizedBox(height: 10),
+                PrimaryButton(
+                    title: "SEND ALERT",
+                    onPressed: () async {
+                      String recipients = "";
+                      List<TContact> contactList =
+                          await DatabaseHelper().getContactList();
+
+                      String messageBody =
+                          "https://www.google.com/maps/search/?api=1&query=${_curentPosition!.latitude}%2C${_curentPosition!.longitude}. $_curentAddress";
+                      if (await _isPermissionGranted()) {
+                        contactList.forEach((element) {
+                          _sendSms("${element.number}",
+                              "i am in trouble $messageBody");
+                        });
+                      } else {
+                        Fluttertoast.showToast(msg: "something wrong");
+                      }
+                    }),
+              ],
+            ),
+          ),
+          decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+  2  
+macos/Flutter/GeneratedPluginRegistrant.swift
+@@ -8,6 +8,7 @@ import Foundation
+import cloud_firestore
+import firebase_auth
+import firebase_core
+import geolocator_apple
+import path_provider_macos
+import shared_preferences_macos
+import sqflite
+@@ -17,6 +18,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+  FLTFirebaseFirestorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseFirestorePlugin"))
+  FLTFirebaseAuthPlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseAuthPlugin"))
+  FLTFirebaseCorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseCorePlugin"))
+  GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))
+  PathProviderPlugin.register(with: registry.registrar(forPlugin: "PathProviderPlugin"))
+  SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
+  SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
+  63  
+pubspec.lock
+@@ -8,6 +8,13 @@ packages:
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.9.0"
+  background_sms:
+    dependency: "direct main"
+    description:
+      name: background_sms
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "0.0.4"
+  boolean_selector:
+    dependency: transitive
+    description:
+@@ -184,6 +191,62 @@ packages:
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "8.0.9"
+  geocoding:
+    dependency: "direct main"
+    description:
+      name: geocoding
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.0.5"
+  geocoding_platform_interface:
+    dependency: transitive
+    description:
+      name: geocoding_platform_interface
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.0.1"
+  geolocator:
+    dependency: "direct main"
+    description:
+      name: geolocator
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "9.0.2"
+  geolocator_android:
+    dependency: transitive
+    description:
+      name: geolocator_android
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "4.1.4"
+  geolocator_apple:
+    dependency: transitive
+    description:
+      name: geolocator_apple
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.2.3"
+  geolocator_platform_interface:
+    dependency: transitive
+    description:
+      name: geolocator_platform_interface
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "4.0.7"
+  geolocator_web:
+    dependency: transitive
+    description:
+      name: geolocator_web
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.1.6"
+  geolocator_windows:
+    dependency: transitive
+    description:
+      name: geolocator_windows
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "0.1.1"
+  google_fonts:
+    dependency: "direct main"
+    description:
+  3  
+pubspec.yaml
+@@ -50,6 +50,9 @@ dependencies:
+  contacts_service: ^0.6.3
+  provider: ^6.0.4
+  sqflite: ^2.2.0+3
+  background_sms: ^0.0.4
+  geolocator: ^9.0.2
+  geocoding: ^2.0.5
+
+
+
+  3  
+windows/flutter/generated_plugin_registrant.cc
+@@ -6,10 +6,13 @@
+
+#include "generated_plugin_registrant.h"
+
+#include <geolocator_windows/geolocator_windows.h>
+#include <permission_handler_windows/permission_handler_windows_plugin.h>
+#include <url_launcher_windows/url_launcher_windows.h>
+
+void RegisterPlugins(flutter::PluginRegistry* registry) {
+  GeolocatorWindowsRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("GeolocatorWindows"));
+  PermissionHandlerWindowsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("PermissionHandlerWindowsPlugin"));
+  UrlLauncherWindowsRegisterWithRegistrar(
+  1  
+windows/flutter/generated_plugins.cmake
+@@ -3,6 +3,7 @@
+#
+
+list(APPEND FLUTTER_PLUGIN_LIST
+  geolocator_windows
+  permission_handler_windows
+  url_launcher_windows
+)
